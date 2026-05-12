@@ -1,0 +1,195 @@
+# Doc Pattern Matrix
+
+**Scope:** which document types to write for which kind of harness work, how to structure each one, and when to split a single file into a folder.
+
+The goal is to keep documentation effort proportional to what the harness actually needs. Every harness gets a PRD and a README. Everything else is gated by triggers — write only when the trigger fires.
+
+---
+
+## 1. The eight document types
+
+| Type | Question it answers | Lifecycle |
+|---|---|---|
+| **PRD** | Why does this harness exist? Who uses it? What does success look like? | Once at design time; revised on scope change. |
+| **RFC** | Did we explore the alternatives before committing? | Pre-decision. Closed when an ADR is written. |
+| **ADR** | What did we commit to, and what was the alternative? | Permanent. One ADR per decision. Never edited; superseded. |
+| **SPEC** | What is the input/output contract and the internal state shape? | Living. Versioned. Source of truth for behavior. |
+| **TDD** | How does the implementation actually work internally? | Optional. Only when the impl is non-trivial enough that a reader cannot follow the code. |
+| **AUDIT** | Does this harness still meet its SPEC? What did the last audit find? | Periodic. Auto-generated (scan-audit) or manually authored (synthesis-audit) — see "Two audit shapes" below. |
+| **POSTMORTEM** | Why did this break? What changes prevent recurrence? | Post-incident only. Never written speculatively. |
+| **README** | How do I run this harness, observe it, stop it? | Living. Operator-facing. |
+
+## 2. Trigger rules — when each type is required
+
+| Type | Required when |
+|---|---|
+| PRD | Always. |
+| RFC | The decision is irreversible *or* multiple credible alternatives exist *or* it crosses harness boundaries. |
+| ADR | An RFC concludes; or a small but committed decision is made without full RFC. |
+| SPEC | The harness produces output consumed by another system (file, DB row, code, PR). |
+| TDD | A new contributor cannot reconstruct the design from reading the code in under 30 minutes. |
+| AUDIT | The harness output is itself an input to other automation. |
+| POSTMORTEM | An incident occurred. Never pre-written. |
+| README | Always. |
+
+If no trigger fires, do not write the doc. Empty docs are worse than missing docs.
+
+## 3. Frontmatter (all docs)
+
+Every doc starts with:
+
+```markdown
+---
+type: PRD | RFC | ADR | SPEC | TDD | AUDIT | POSTMORTEM | README
+status: draft | accepted | superseded | retired
+owner: <author or rotation>
+last-reviewed: YYYY-MM-DD
+supersedes: <relative path>     # ADRs only, optional
+superseded-by: <relative path>  # ADRs only, optional
+---
+```
+
+Status transitions:
+- `draft` → `accepted`: SPEC becomes binding; ADR becomes committed.
+- `accepted` → `superseded`: a new doc replaces it (ADRs); link via `superseded-by`.
+- `accepted` → `retired`: the harness or contract no longer exists; do not delete the file.
+
+Index / navigation files and top-level methodology docs are exempt — they are not documents-of-record. Specifically: any file named `README.md` anywhere under `docs/` (these are navigation indexes), plus the top-level methodology docs at `docs/harness/` (`principles.md`, `architecture.md`, `doc-pattern.md` itself, `behavior-verification.md`). Every typed document (PRD/RFC/ADR/SPEC/TDD/AUDIT/POSTMORTEM) carries the frontmatter.
+
+## 4. Section templates per type
+
+### PRD
+```
+1. Problem
+2. Users / triggers
+3. Success criteria (measurable)
+4. Non-goals
+5. Open questions
+```
+
+### RFC
+```
+1. Context
+2. Options considered (≥ 2)
+3. Trade-offs (per option)
+4. Recommendation
+5. Decision log (links to resulting ADR(s))
+```
+
+### ADR
+```
+1. Decision (one sentence)
+2. Context
+3. Alternatives rejected
+4. Consequences
+```
+
+### SPEC
+```
+1. Inputs (schema, source)
+2. Outputs (schema, destination)
+3. State (if any)
+4. Invariants
+5. Failure modes (and how each is observed)
+6. Versioning rules
+```
+
+### TDD
+```
+1. Architecture sketch
+2. Module boundaries
+3. Critical sequence / performance-sensitive path
+4. Concurrency model (if any)
+5. Where the LLM is invoked, and where it is not
+```
+
+### AUDIT
+```
+1. Date and scope
+2. Method (script, query, manual)
+3. Severity scale used
+4. Findings table (consolidated)
+5. Findings detail (per-finding)
+6. Recommended sequencing (when actionable)
+7. Defer with re-open trigger (when applicable)
+8. Reject with reason (when applicable)
+9. Side effects (files touched / not touched)
+10. Notes for future audits
+[11. Amendments — append-only, post-merge revisions]
+```
+
+AUDITs are work logs, not authoritative sources — findings flow to canonical docs per [`principles.md`](principles.md) §11. Filename / frontmatter / severity-scale / citation / finding-ID conventions live in `.claude/skills/review-doc/prompts/AUDIT.md` (loaded by the doc-reviewer when classifying AUDIT files).
+
+**Two audit shapes** — same `type: AUDIT` but different lifecycle:
+
+| Shape | Generator | Lifecycle | Examples |
+|---|---|---|---|
+| **scan-audit** | Auto-generated by cron / slash command | Ephemeral; can be regenerated | Daily docs-audit cron output |
+| **synthesis-audit** | Manually authored; reviews + proposes | Durable as historical record | Doc-review system plan; harness reviewer + coverage audit |
+
+When a synthesis-audit is primarily *forward-looking* (proposing PRs, recommending architecture, sequencing future work), consider `type: RFC` or `type: PRD` instead. AUDIT is the wrong label for an RFC-shaped planning doc.
+
+### POSTMORTEM
+```
+1. Summary
+2. Timeline
+3. Root cause
+4. Action items (linked to tickets)
+5. What worked / what did not
+```
+
+### README
+```
+1. What this harness does (one paragraph)
+2. How to run it
+3. How to observe it (logs, metrics, dashboard)
+4. How to stop it (circuit-breaker, budget cap)
+5. Known limitations
+```
+
+## 5. Single file vs folder — when to promote
+
+Start every harness component as a single file:
+
+```
+components/log-to-ticket.md
+```
+
+Inside that file, sections correspond to doc types (`# PRD`, `# RFC`, `# SPEC`, `# ADR-NNN`, …).
+
+Promote to a folder when **either** trigger fires:
+- A second ADR is needed (you now have ADR-NNN and a later ADR-NNN).
+- An RFC accumulates more than one screen of content.
+
+Promotion is a `git mv`:
+
+```
+components/log-to-ticket/
+├── README.md
+├── PRD.md
+├── RFC.md
+├── SPEC.md
+├── ADR-NNN-storage.md
+├── ADR-NNN-dedup-key.md
+└── AUDIT.md
+```
+
+Update `CLAUDE.md` to point at the folder.
+
+## 6. Standard combos by component shape
+
+| Component shape | PRD | RFC | ADR | SPEC | TDD | AUDIT | README |
+|---|---|---|---|---|---|---|---|
+| Code-modifying (generates or edits source) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Log → ticket → fix pipeline | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Docs auditor (read-only) | ✓ | — | — | ✓ | — | ✓ | ✓ |
+
+Code-modifying components carry the full set because they have high blast radius. Read-only auditors do not need RFCs or ADRs at design time.
+
+## 7. Anti-patterns
+
+- **PRD that is actually a SPEC.** PRDs answer "why and for whom"; SPECs answer "what exactly." Mixing them produces a document no one trusts.
+- **RFC written after the decision.** RFCs are for exploration. Backfilled RFCs are revisionism — write an ADR instead.
+- **ADR that is amended.** Edit forbidden. Supersede with a new ADR and link via `superseded-by`.
+- **scan-audit files written by hand.** A scan-audit (the "Two audit shapes" table above) is output of an automated run. If labeled scan-audit but hand-written, the harness is not actually auditing. Synthesis-audits are by-design manually authored and are NOT covered by this anti-pattern.
+- **README that duplicates SPEC.** README is operator-facing (run, observe, stop). It links to SPEC, does not paraphrase it.

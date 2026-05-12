@@ -1,0 +1,20 @@
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Claude Code runtime state
+.claude/scheduled_tasks.lock
+.claude/local/
+
+# Generated audit reports (regenerated on every /audit-docs / /audit-harness-coverage run)
+.claude/audits/
+
+# Per-environment harness state (incident DBs, budget tracking, cron cursors, run logs)
+var/
+
+# Python
+__pycache__/
+*.pyc
+*.bak
